@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "command": ".cursor/hooks/exercise-guard.sh",
+        "matcher": "Write|StrReplace|EditNotebook",
+        "failClosed": false
+      }
+    ]
+  }
+}

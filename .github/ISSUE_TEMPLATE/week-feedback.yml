@@ -1,0 +1,42 @@
+name: Module feedback
+description: Tell us what broke unexpectedly or where you got stuck (5 minutes).
+title: "[Module 3 feedback] "
+labels: ["feedback"]
+body:
+  - type: input
+    id: module
+    attributes:
+      label: Which module
+      value: "Module 3 — pe-03-llm"
+    validations:
+      required: true
+  - type: textarea
+    id: unexpected
+    attributes:
+      label: One thing that broke unexpectedly
+      description: NOT an intentional bug — something the repo itself should not have done (setup, CI, README).
+    validations:
+      required: false
+  - type: textarea
+    id: discovery
+    attributes:
+      label: How did the discovery bugs (Bugs 3 and 5) go?
+      description: Did the "green test that lies" click, or was it frustrating? What finally made it land?
+    validations:
+      required: false
+  - type: textarea
+    id: stuck
+    attributes:
+      label: Where did you hit the 4-hour stuck threshold (if you did)?
+    validations:
+      required: false
+  - type: dropdown
+    id: ai-review
+    attributes:
+      label: Was the AI PR review comment useful?
+      options:
+        - "Useful and specific"
+        - "Generic / not helpful"
+        - "I did not see one"
+    validations:
+      required: false

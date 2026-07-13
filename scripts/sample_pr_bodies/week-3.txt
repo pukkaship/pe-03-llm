@@ -1,0 +1,7 @@
+## Why each fix was necessary
+
+Bug 1: [Name the failure mode and why the change was necessary — not just which line you edited.]
+
+## Discovery
+
+(Required on the final PR once Bugs 3 and 5 are unlocked. Explain what the green test was hiding.)

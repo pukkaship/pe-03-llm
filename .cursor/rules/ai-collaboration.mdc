@@ -1,0 +1,32 @@
+---
+description: Pukkaship AI collaboration rules — understand first, fix yourself
+alwaysApply: true
+---
+
+# AI Collaboration (Pukkaship)
+
+You may use Cursor throughout this program. The credential certifies **your** judgment, not the model's output.
+
+## Allowed
+
+- Explain an error message or TypeScript concept
+- Walk through code the student is reading
+- Suggest what to *look at* next (file, test, log line)
+- Answer "what does X mean?" before any edit
+
+## Not allowed (unless the student has read the code first)
+
+- Implement the fix for a failing test
+- Rewrite exercise logic so CI passes
+- Fill in bug journals or PR "why" sections
+
+## The micro-loop
+
+1. Read the exact error
+2. Form a hypothesis **before** editing
+3. Ask AI what the error **means** — not to fix it
+4. Make the smallest change that tests the hypothesis
+5. Run `npm test`
+6. Write down **why** the fix was necessary
+
+At the weekly sync the learner explains each fix without looking at the PR. Optimize for that outcome.

@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "module": "pe-03",
+  "discoveryBugs": [3, 5],
+  "begin": {
+    "minWords": 100,
+    "mustMatch": ["transport|content|null|parsed|schema|retry|dead.?letter", "the rule is"],
+    "successMessage": "Ready. Now run: npm test — two tests are failing (Bug 1). Start there."
+  },
+  "unlockKeywords": {
+    "1": [".+"],
+    "2": ["retry|retryable|non.?retryable|content.fail|schema|classif"],
+    "3": ["null|amount|silent|discover|read.?back|reproduc|process"],
+    "4": ["dead.?letter|original.?doc|re.?process|auditable|record"],
+    "5": ["cap|bound|max.?retry|exhausti|persistent|dead.?letter"]
+  },
+  "behaviouralGates": [
+    {
+      "slot": "bug-03",
+      "targetModule": "src/extract.ts",
+      "candidateTest": "src/__tests__/bug-03.test.ts",
+      "journalTemplate": "bug-journal/bug-03.md"
+    },
+    {
+      "slot": "bug-05",
+      "targetModule": "src/extract.ts",
+      "candidateTest": "src/__tests__/bug-05.test.ts",
+      "journalTemplate": "bug-journal/bug-05.md"
+    },
+    {
+      "slot": "unannounced",
+      "targetModule": "src/extract.ts",
+      "candidateTest": "src/__tests__/bug-04.test.ts",
+      "journalTemplate": "bug-journal/bug-04.md"
+    }
+  ],
+  "discoveryRewrites": {
+    "3": {
+      "anyOfGroups": [
+        ["(?<!not)\\.toBeNull\\(\\)"],
+        ["getInvoices.*toHaveLength\\(0\\)|getDeadLetters.*toHaveLength\\(1\\)|dead_lettered"]
+      ],
+      "simLine": "  it(\"sim rewrite\", async () => { const result = await extractInvoice(\"doc\", client); expect(result).toBeNull(); });",
+      "failMessage": "bug-03.test.ts still only checks status/non-null — rewrite it to assert the extractor returns null (dead-lettered) on a null-amount body, or assert getDeadLetters().toHaveLength(1). That is the discovery: status 'processed' is not proof the amount is real."
+    },
+    "5": {
+      "anyOfGroups": [
+        ["getLastCallCount|callCount|toBeGreaterThan.*MAX_RETRIES|toBeLessThanOrEqual.*MAX"],
+        ["getDeadLetters.*toHaveLength|retries_exhausted|dead.?letter.*exhausted"]
+      ],
+      "simLine": "  it(\"sim rewrite\", () => { expect(getDeadLetters()).toHaveLength(1); expect(getDeadLetters()[0].errorType).toBe('retries_exhausted'); });",
+      "failMessage": "bug-05.test.ts still only checks the happy-path retry — rewrite it to mock a *persistent* 429 (always returns 429) and assert the retry stops after MAX_RETRIES attempts and writes a dead-letter on exhaustion. A single-retry success is not proof the bound exists."
+    }
+  },
+  "requiredPRSections": {
+    "always": ["Why each fix was necessary"],
+    "atBug5": ["Hypothesis", "Discovery"]
+  },
+  "defense": {
+    "durationSecMin": 240,
+    "durationSecMax": 480,
+    "recordingUrlPattern": "loom\\.com/(share|embed)/",
+    "forkQuestions": [
+      {
+        "id": "fq1",
+        "prompt": "You fixed Bug 3 by checking that amount is a positive number before writing. The model now sometimes returns { amount: '47000' } — a string, not a number. Your tech lead says 'just coerce it with Number()'. Explain first why coercion is unsafe here, then say what the safe alternative is and which failure path it follows."
+      },
+      {
+        "id": "fq2",
+        "prompt": "Bug 5 dead-letters a document after MAX_RETRIES exhausted 429s. You now need to add that same cap, but you cannot modify extract.ts at all. The only thing you can control is the LLMClient you pass in. How do you enforce a call limit from the outside — and what field does the dead-letter record need to expose so whoever receives it knows the document can be re-processed?"
+      },
+      {
+        "id": "fq3",
+        "prompt": "Your dead-letter recovery path re-processes a document after a schema fix. If re-processing triggers the same token-limit failure again, should the system dead-letter a second record, overwrite the existing one, or silently discard? Walk through the idempotency trade-off: what does a second dead-letter record give the operator, and what risk does it create?"
+      },
+      {
+        "id": "fq4",
+        "prompt": "The accounting UI shows '—' for a dead-lettered invoice. A finance manager wants to also see the failure reason (e.g. 'body did not parse as JSON'). Which layer should surface that reason — the extractor, the dead-letter store, or the UI — and what contract does it require from the dead-letter record?"
+      }
+    ],
+    "rubric": {
+      "dimension": "survive-failure",
+      "passThreshold": 3,
+      "maxScore": 5
+    }
+  },
+  "artifactChecks": [],
+  "minJournalWords": 80,
+  "capstone": {
+    "reflectionMinWords": 30,
+    "skillStatementMinChars": 20,
+    "aiSessionLogMinWords": 20
+  }
+}
