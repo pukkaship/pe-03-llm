@@ -20,7 +20,7 @@ while the code still reports success?]
 
 [your question]
 
-## Design note (see docs/design-review.md)
+## Design note (see docs/week3-03-design-review.md)
 
 1. Where does this system's state live, and what is the *one* path that is allowed to change it?
 2. What does the "success" signal (status code / return value) currently assume that it should not?

@@ -1,11 +1,19 @@
-node_modules/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
 dist/
+build/
+.eggs/
+.env
+.venv
+env/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 *.log
 .DS_Store
-.env
-PR_BODY.md
-# Mentor-only materials (solution, self-test) — must NEVER ship in the published template
 .mentor/
-# Future-bug content is delivered by the gate worker from the content repo — never ship it
-src/__tests__/tests-staged/
-bug-journal-templates/

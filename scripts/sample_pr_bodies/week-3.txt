@@ -1,7 +1,27 @@
 ## Why each fix was necessary
 
-Bug 1: [Name the failure mode and why the change was necessary — not just which line you edited.]
+Bug 1: [Name the failure mode and explain why the exception path must dead-letter rather than
+write a null-filled record — not just which line you changed.]
+
+Bug 2: [Name the failure class distinction and explain why retrying a content failure re-triggers
+the same failure every time.]
+
+Bug 3: [Explain what `_is_usable()` was failing to check and why a passed test can still signal
+a usable record when the amount field is null.]
+
+Bug 4: [Name what was silently discarded on exhaustion and why that breaks the recovery path.]
+
+Bug 5: [Explain what was missing from the dead-letter record and why a non-empty field does not
+prove re-processability.]
+
+## Hypothesis
+
+[What you thought was wrong before you started editing Bug 1. Where were you right, where wrong?]
 
 ## Discovery
 
-(Required on the final PR once Bugs 3 and 5 are unlocked. Explain what the green test was hiding.)
+Bug 3: [How did you find the null-amount failure when no test was red? What did you try, what did
+you observe, and what did you assert in your rewritten test to prove the real behaviour?]
+
+Bug 5: [How did you find the missing original document? What did you check in the dead-letter
+record, and what assertion proves the document is preserved for re-processing?]

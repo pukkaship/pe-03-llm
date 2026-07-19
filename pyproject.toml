@@ -1,0 +1,23 @@
+[project]
+name = "pe-03-llm"
+version = "1.0.0"
+description = "Module 3 — LLM Reliability. Fix five deliberate bugs, one gate at a time."
+requires-python = ">=3.12"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "mypy>=1.11",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = ["-v", "--tb=short"]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+files = ["src"]

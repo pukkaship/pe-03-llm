@@ -7,18 +7,31 @@ orientation video. You do not need the repo open to answer it.
 
 ## The one idea
 
+A developer asked an AI to fix a null-amount bug. It added `amount = amount or 0.0`. CI went
+green. The invoice was wrong for three months.
+
+The HTTP call had returned `200 OK` the whole time. That is the trap:
+
 **An LLM call is a non-deterministic, unreliable network call — transport success (200 OK) is
 not content success; a well-formed HTTP response can still carry an unusable body.**
 
 Every developer who has worked with REST APIs knows that a 200 OK means the request reached the
 server. With an LLM call, that is all it means. The body might be:
 
-- A truncated JSON string — the model hit its completion-token limit mid-response.
-- A JSON object with all the right keys, but `amount: null` (present but not a usable value).
-- A JSON object in a completely different schema than you expected.
-- A valid JSON string containing an error message from the model, not the structured output you asked for.
+- A JSON object with all the right keys, but `amount: null` — present, but not a usable value.
+  **This is the dangerous one.** A null that reaches the accounting ledger stamped `"processed"`
+  looks like a success and corrupts data silently for weeks. The three failures below at least
+  *announce* themselves.
+- A truncated JSON string — the model hit its completion-token limit mid-response. `json.loads`
+  raises immediately; the failure is loud.
+- A JSON object in a completely different schema than you expected. Schema validation rejects it
+  at once.
+- A valid JSON string containing an error message from the model, not the structured output you
+  asked for.
 
-In each case: transport succeeded. Content failed.
+In each case: transport succeeded. Content failed. But they are not equal in cost — the null
+that *impersonates* success is the one that reaches finance; a parse error that throws never gets
+that far.
 
 ---
 
@@ -39,7 +52,7 @@ policy must be decided per failure class:
 |---|---|---|---|
 | HTTP 429 rate limit | Provider quota hit | **Yes** — bounded, with backoff/jitter | Retry up to N times; dead-letter on exhaustion |
 | HTTP 5xx transient | Provider internal error | **Yes** — bounded | Same as 429 |
-| `JSON.parse` throws | Truncated / malformed body | **No** | Dead-letter immediately; preserve document |
+| `json.loads` raises | Truncated / malformed body | **No** | Dead-letter immediately; preserve document |
 | Valid JSON, wrong schema | Off-schema / null fields | **No** | Dead-letter immediately; preserve document |
 
 ---
@@ -68,24 +81,20 @@ Without the original document, there is nothing to re-process.
 
 Write these before you touch code:
 
-1. **What the system does.** The extractor accepts a raw document string, calls an LLM to
-   classify eight fields, validates the response, and persists the result as an invoice record
-   or a dead-letter entry.
+1. <a id="access"></a>**What the system does, and who calls it.** The extractor accepts a raw
+   document string, calls an LLM to classify eight fields, validates the response, and persists
+   the result as an invoice record or a dead-letter entry. It is called by the billing service
+   worker — one call per uploaded document, after the document passes a size and format check.
+   No direct calls from HTTP handlers. The model client (`ModelClient`) is injected as
+   `model_client` so tests never hit the network.
 
 2. **Where its state lives and the one path allowed to change it.** State lives in the in-memory
-   `invoiceStore` and `deadLetterStore`. The only path that changes them is `extractInvoice()`.
-   Tests observe state via `getInvoices()` and `getDeadLetters()` — never by reading
-   `invoiceStore` directly.
+   `_invoice_store` and `_dead_letter_store`. The only path that changes them is
+   `extract_invoice()`. Tests observe state via `get_invoices()` and `get_dead_letters()` —
+   never by reading `_invoice_store` directly.
 
 3. **Where a success signal could lie — and what you would assert to catch it.** The function
    returns a non-null `InvoiceRecord` and sets `status: "processed"`. Both are true even when
-   `amount` is null. A test that only checks those signals is fooled. The assertion that catches
-   it: `getInvoices()[0].amount` is a positive number (read the effect back from the store, not
-   from the return value).
-
-<a id="access"></a>
-## Who may call the extractor (access)
-
-`extractInvoice` is called by the billing service worker — one call per uploaded document,
-after the document passes a size and format check. No direct calls from HTTP handlers.
-The `LLMClient` is injected so tests never hit the network.
+   the body was unusable. A test that only checks those signals is fooled. The principle that
+   catches it: read the persisted value back from the store, not from the return value — then
+   decide whether what was actually written is usable.

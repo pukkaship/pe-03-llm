@@ -39,6 +39,17 @@ failure. Dead-lettering immediately (0 retries) is correct.
 The maximum number of times a retryable call is re-tried before the system gives up and
 dead-letters. Without an attempt cap, a persistent failure triggers an infinite retry loop.
 
+**Exponential backoff**
+A retry-timing policy that increases the wait between attempts geometrically — for example 1s,
+then 2s, then 4s, doubling each time. Retrying instantly re-trips the same rate limit and adds
+load to a provider that is already struggling; backing off gives the external condition time to
+clear. It applies only to retryable failures and is still bounded by the attempt cap.
+
+**Jitter**
+A small random offset added to each backoff delay so that many clients retrying at once do not
+all wake at the same instant. Without jitter, a fleet of clients retries in lockstep and
+stampedes the recovering provider back down (the "thundering herd").
+
 **Null-fill / coerce-and-write**
 Writing a record with null (or zero, or empty string) values for fields that could not be
 extracted, and marking the record "processed". This is the bug: it impersonates a successful

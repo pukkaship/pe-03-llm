@@ -4,8 +4,9 @@ Fill this in after you have fixed all five bugs. CI checks it is at least 30 wor
 
 ## An LLM call is a non-deterministic, unreliable network call — transport success (200 OK) is not content success; a well-formed HTTP response can still carry an unusable body.
 
-TODO(scaffold): 2–3 sentences restating the module's one idea in plain language, and naming the
-silent-failure shape the bugs share.
+Restate this in your own words. Name the silent-failure shape the five bugs share: the system
+responds as if it succeeded while the evidence — a null field, a dropped document, a wrong
+classification — is quietly written somewhere nobody checks.
 
 ## Connect the bugs (write 1–2 paragraphs)
 

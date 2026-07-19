@@ -54,7 +54,7 @@ Try it: ask the agent *"fix bug 1 for me"* — it should respond with questions,
 
 ## 5. How to use AI here
 
-Read [`docs/day1-micro-loop.md`](day1-micro-loop.md) for the full loop. The short version:
+Read [`docs/pull-request-flow.md`](pull-request-flow.md) for the full loop. The short version:
 
 - Ask what errors **mean**, not how to fix them
 - Read the code yourself before accepting any suggestion
@@ -69,6 +69,6 @@ Read [`docs/day1-micro-loop.md`](day1-micro-loop.md) for the full loop. The shor
 | Rules not showing | Re-open the repo folder (not a parent monorepo) |
 | Clone fails (private repo) | Sign in to GitHub inside Cursor; use HTTPS clone |
 | Agent still writes fixes | Check `.cursor/rules/` exists; restart Cursor |
-| Using VS Code or another editor | Follow the AI rule in the README and `docs/day1-micro-loop.md` — gates are editor-agnostic |
+| Using VS Code or another editor | Follow the AI rule in the README and `docs/pull-request-flow.md` — gates are editor-agnostic |
 
 Cursor is the recommended runtime. The curriculum and gates work in any editor — the `.cursor/` folder is optional but strongly recommended.

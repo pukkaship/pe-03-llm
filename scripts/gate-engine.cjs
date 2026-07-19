@@ -205,11 +205,19 @@ function requireFile(cwd, failures, file, minWords, label) {
 function runValidate({ cwd, gates, env = process.env }) {
   const failures = [];
   const currentBug = highestUnlockedBug(cwd);
+  const derivedBugCount = Math.max(
+    0,
+    ...Object.keys(gates.unlockKeywords ?? {}).map(Number).filter(Number.isInteger)
+  );
+  const bugCount = Number.isInteger(gates.bugCount) ? gates.bugCount : derivedBugCount;
+  if (bugCount < 1) {
+    failures.push("gates.json must declare bugCount or a non-empty unlockKeywords map");
+  }
 
   if (currentBug === 0) {
     failures.push("No bug tests found in src/__tests__/ \u2014 start with Bug 1");
   } else {
-    console.log(`\u2139 Validating milestone Bug ${currentBug} of 5 (incremental gate-bot flow)`);
+    console.log(`\u2139 Validating milestone Bug ${currentBug} of ${bugCount} (incremental gate-bot flow)`);
   }
 
   const hypothesisMin = gates.begin?.minWords ?? 100;
@@ -221,7 +229,7 @@ function runValidate({ cwd, gates, env = process.env }) {
   }
 
   const capstone = gates.capstone ?? {};
-  if (currentBug >= 5) {
+  if (currentBug >= bugCount) {
     requireFile(cwd, failures, "REFLECTION.md", capstone.reflectionMinWords ?? 30, "REFLECTION.md");
     requireFile(cwd, failures, "SKILL-STATEMENT.md", 0, "SKILL-STATEMENT.md");
     const skillPath = path.join(cwd, "SKILL-STATEMENT.md");
@@ -257,7 +265,9 @@ function runValidate({ cwd, gates, env = process.env }) {
     }
   }
 
-  const discoveryBugs = gates.discoveryBugs ?? [3, 5];
+  const discoveryBugs =
+    gates.discoveryBugs ??
+    Object.keys(gates.discoveryRewrites ?? {}).map(Number).filter(Number.isInteger);
   for (const bugNum of discoveryBugs) {
     if (currentBug < bugNum) continue;
     const testRel = `src/__tests__/bug-0${bugNum}.test.ts`;
@@ -280,9 +290,12 @@ function runValidate({ cwd, gates, env = process.env }) {
         failures.push(`PR description must include a section titled "${section}"`);
       }
     }
-    if (currentBug >= 5) {
-      const atBug5 = gates.requiredPRSections?.atBug5 ?? ["Discovery"];
-      for (const section of atBug5) {
+    if (currentBug >= bugCount) {
+      const atCapstone =
+        gates.requiredPRSections?.atCapstone ??
+        gates.requiredPRSections?.atBug5 ??
+        ["Discovery"];
+      for (const section of atCapstone) {
         if (!new RegExp(section, "i").test(prBody)) {
           if (section === "Hypothesis") {
             failures.push(
@@ -290,7 +303,7 @@ function runValidate({ cwd, gates, env = process.env }) {
             );
           } else if (section === "Discovery") {
             failures.push(
-              'PR description must include a "Discovery" section (how you found the bugs nothing pointed you to \u2014 Bugs 3 and 5)'
+              'PR description must include a "Discovery" section (how you investigated the superficially passing evidence)'
             );
           } else {
             failures.push(`PR description must include a "${section}" section`);

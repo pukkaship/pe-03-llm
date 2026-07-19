@@ -11,23 +11,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-python@v5
         with:
-          node-version-file: ".nvmrc"
-          cache: "npm"
+          python-version-file: ".python-version"
+          cache: "pip"
 
-      - name: Install
-        run: npm ci --strict-allow-scripts=true
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
 
-      - name: Typecheck (strict)
-        run: npm run typecheck
+      - name: Type-check (strict)
+        # mypy runs on src/ only — tests are not type-checked at strict level
+        run: mypy src
 
       - name: Tests
         # The suite runs fully offline against in-memory mocks — no external services or secrets.
-        run: npm test
+        run: pytest
 
       - name: Validate PR artifacts
         if: github.event_name == 'pull_request'
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
-        run: npm run validate
+        run: node scripts/validate_pr.cjs

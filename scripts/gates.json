@@ -4,78 +4,67 @@
   "discoveryBugs": [3, 5],
   "begin": {
     "minWords": 100,
-    "mustMatch": ["transport|content|null|parsed|schema|retry|dead.?letter", "the rule is"],
-    "successMessage": "Ready. Now run: npm test — two tests are failing (Bug 1). Start there."
+    "mustMatch": ["hypothesis|error", "the rule is"],
+    "successMessage": "Ready. Now run: pytest — one test is failing (Bug 1). Start there."
   },
   "unlockKeywords": {
     "1": [".+"],
-    "2": ["retry|retryable|non.?retryable|content.fail|schema|classif"],
-    "3": ["null|amount|silent|discover|read.?back|reproduc|process"],
-    "4": ["dead.?letter|original.?doc|re.?process|auditable|record"],
-    "5": ["cap|bound|max.?retry|exhausti|persistent|dead.?letter"]
+    "2": [".+"],
+    "3": ["silent|discover|read.?back|reproduc|amount|null|usable"],
+    "4": [".+"],
+    "5": [".+"]
   },
-  "behaviouralGates": [
-    {
-      "slot": "bug-03",
-      "targetModule": "src/extract.ts",
-      "candidateTest": "src/__tests__/bug-03.test.ts",
-      "journalTemplate": "bug-journal/bug-03.md"
-    },
-    {
-      "slot": "bug-05",
-      "targetModule": "src/extract.ts",
-      "candidateTest": "src/__tests__/bug-05.test.ts",
-      "journalTemplate": "bug-journal/bug-05.md"
-    },
-    {
-      "slot": "unannounced",
-      "targetModule": "src/extract.ts",
-      "candidateTest": "src/__tests__/bug-04.test.ts",
-      "journalTemplate": "bug-journal/bug-04.md"
-    }
-  ],
   "discoveryRewrites": {
     "3": {
       "anyOfGroups": [
-        ["(?<!not)\\.toBeNull\\(\\)"],
-        ["getInvoices.*toHaveLength\\(0\\)|getDeadLetters.*toHaveLength\\(1\\)|dead_lettered"]
+        ["get_invoices\\(\\)[\\s\\S]*amount.*>.*0"],
+        ["get_dead_letters\\(\\)"]
       ],
-      "simLine": "  it(\"sim rewrite\", async () => { const result = await extractInvoice(\"doc\", client); expect(result).toBeNull(); });",
-      "failMessage": "bug-03.test.ts still only checks status/non-null — rewrite it to assert the extractor returns null (dead-lettered) on a null-amount body, or assert getDeadLetters().toHaveLength(1). That is the discovery: status 'processed' is not proof the amount is real."
+      "simLine": "    assert result is not None",
+      "failMessage": "test_bug_03.py still only checks that a record was returned — rewrite it to prove the amount is a real positive number (call get_invoices() and assert amount > 0) or that the record was refused entirely (check get_dead_letters()). Asserting the record is not None, or that amount is not None, is not enough: a mutant that coerces null to 0.0 passes both checks."
     },
     "5": {
       "anyOfGroups": [
-        ["getLastCallCount|callCount|toBeGreaterThan.*MAX_RETRIES|toBeLessThanOrEqual.*MAX"],
-        ["getDeadLetters.*toHaveLength|retries_exhausted|dead.?letter.*exhausted"]
+        ["original_document\\s*==|==\\s*[^=\\n]*original_document"]
       ],
-      "simLine": "  it(\"sim rewrite\", () => { expect(getDeadLetters()).toHaveLength(1); expect(getDeadLetters()[0].errorType).toBe('retries_exhausted'); });",
-      "failMessage": "bug-05.test.ts still only checks the happy-path retry — rewrite it to mock a *persistent* 429 (always returns 429) and assert the retry stops after MAX_RETRIES attempts and writes a dead-letter on exhaustion. A single-retry success is not proof the bound exists."
+      "simLine": "    assert len(dead_letters) == 1",
+      "failMessage": "test_bug_05.py still only checks that a dead-letter record exists — rewrite it to prove the record is re-processable by asserting dead_letters[0].original_document equals the actual input document string. Asserting original_document is not None is not enough: a mutant that stores the parsed response body (the extracted-so-far fields) instead of the raw input document also passes that check."
     }
   },
   "requiredPRSections": {
     "always": ["Why each fix was necessary"],
-    "atBug5": ["Hypothesis", "Discovery"]
+    "atBug5": ["Discovery"],
+    "atCapstone": ["Hypothesis", "Discovery"]
   },
   "defense": {
-    "durationSecMin": 240,
-    "durationSecMax": 480,
+    "durationSecMin": 180,
+    "durationSecMax": 300,
     "recordingUrlPattern": "loom\\.com/(share|embed)/",
+    "recordingUrlPatternTodo": "TODO: Loom→Cloudflare Stream is a deferred decision (open blocker: learner identity verification). Keep loom.com until that is resolved.",
     "forkQuestions": [
       {
         "id": "fq1",
-        "prompt": "You fixed Bug 3 by checking that amount is a positive number before writing. The model now sometimes returns { amount: '47000' } — a string, not a number. Your tech lead says 'just coerce it with Number()'. Explain first why coercion is unsafe here, then say what the safe alternative is and which failure path it follows."
+        "prompt": "Your run: in your commit history, which commit first made your rewritten test_bug_03.py fail against the original buggy code? Read out that commit's pytest output for test_bug_03."
       },
       {
         "id": "fq2",
-        "prompt": "Bug 5 dead-letters a document after MAX_RETRIES exhausted 429s. You now need to add that same cap, but you cannot modify extract.ts at all. The only thing you can control is the LLMClient you pass in. How do you enforce a call limit from the outside — and what field does the dead-letter record need to expose so whoever receives it knows the document can be re-processed?"
+        "prompt": "Your prediction: your hypothesis.md predicted a cause for the null-amount failure. Where were you right, where wrong, and what did finding Bug 3 change about how you read a 'success' response from an LLM?"
       },
       {
         "id": "fq3",
-        "prompt": "Your dead-letter recovery path re-processes a document after a schema fix. If re-processing triggers the same token-limit failure again, should the system dead-letter a second record, overwrite the existing one, or silently discard? Walk through the idempotency trade-off: what does a second dead-letter record give the operator, and what risk does it create?"
+        "prompt": "Trade-off: the model schema says `amount` must arrive as a JSON number — a string amount is a wrong-shape content failure, not a normalization opportunity. A teammate suggests coercing '324750' to a float before writing rather than dead-lettering the record. Which design section governs this decision, what does it require, and why does coercing rather than rejecting undermine the classification contract?"
       },
       {
         "id": "fq4",
-        "prompt": "The accounting UI shows '—' for a dead-lettered invoice. A finance manager wants to also see the failure reason (e.g. 'body did not parse as JSON'). Which layer should surface that reason — the extractor, the dead-letter store, or the UI — and what contract does it require from the dead-letter record?"
+        "prompt": "Rejected AI: name one AI suggestion you rejected this week and why (from your ai-session-log.md). What would have stayed silently broken if you had taken it?"
+      },
+      {
+        "id": "fq5",
+        "prompt": "Live perturbation: the gate will inject a fresh model_client at defense time — it may return a truncated body, a wrong-schema body, or a persistent 429. Before you run anything, say on camera whether your code will write, dead-letter, or retry — and how many model calls it will make. Then run it and explain any gap."
+      },
+      {
+        "id": "fq6",
+        "prompt": "State & correctness: walk me through where this system's state lives and the one path allowed to change it. Name the two stores, the single function that writes to them, and the two functions a test is allowed to observe them through. Then show — live, in your code — one place where a 'success' signal is true but the underlying state is not what it claims, and the assertion you wrote to catch it."
       }
     ],
     "rubric": {
