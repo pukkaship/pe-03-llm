@@ -9,6 +9,9 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const {
+  ACTIVE_RECORDING_URL_PATTERN,
+} = require("./defense-provider.cjs");
 
 /**
  * @param {string} gatesPath
@@ -100,7 +103,12 @@ function runUnlock({ cwd, gates, bugNumber }) {
     process.chdir(cwd);
 
     try {
-      execSync("npx vitest run", { stdio: "inherit" });
+      const kind = detectArtifactKind(cwd);
+      if (kind === "python_test") {
+        execSync("pytest", { stdio: "inherit" });
+      } else {
+        execSync("npx vitest run", { stdio: "inherit" });
+      }
     } catch {
       console.error("\n\u274c Tests are not passing. Fix the current bug before unlocking the next.\n");
       process.exit(1);
@@ -148,7 +156,7 @@ function runUnlock({ cwd, gates, bugNumber }) {
       console.log("  1. Fill in REFLECTION.md");
       console.log("  2. Fill in SKILL-STATEMENT.md");
       console.log("  3. Fill in ai-session-log.md (one entry per bug)");
-      console.log("  4. Run: npm run validate\n");
+      console.log("  4. Run: node scripts/validate_pr.cjs\n");
     }
 
     return { ok: true };
@@ -178,10 +186,38 @@ function discoveryRewritePasses(rewrite, content) {
   return false;
 }
 
+/**
+ * Resolve the on-disk path for bug N's delivered test.
+ * TypeScript modules ship `src/__tests__/bug-0N.test.ts`;
+ * Python modules ship `tests/test_bug_0N.py`.
+ * @returns {{ abs: string, rel: string, kind: "typescript_test" | "python_test" } | null}
+ */
+function bugTestPath(cwd, bugNumber) {
+  const tsRel = path.join("src", "__tests__", `bug-0${bugNumber}.test.ts`);
+  const tsAbs = path.join(cwd, tsRel);
+  if (fs.existsSync(tsAbs)) {
+    return { abs: tsAbs, rel: tsRel, kind: "typescript_test" };
+  }
+  const pyRel = path.join("tests", `test_bug_0${bugNumber}.py`);
+  const pyAbs = path.join(cwd, pyRel);
+  if (fs.existsSync(pyAbs)) {
+    return { abs: pyAbs, rel: pyRel, kind: "python_test" };
+  }
+  return null;
+}
+
+function detectArtifactKind(cwd) {
+  for (let i = 1; i <= 5; i++) {
+    const hit = bugTestPath(cwd, i);
+    if (hit) return hit.kind;
+  }
+  return null;
+}
+
 function highestUnlockedBug(cwd) {
   let n = 0;
   for (let i = 1; i <= 5; i++) {
-    if (fs.existsSync(path.join(cwd, "src", "__tests__", `bug-0${i}.test.ts`))) n = i;
+    if (bugTestPath(cwd, i)) n = i;
   }
   return n;
 }
@@ -215,7 +251,9 @@ function runValidate({ cwd, gates, env = process.env }) {
   }
 
   if (currentBug === 0) {
-    failures.push("No bug tests found in src/__tests__/ \u2014 start with Bug 1");
+    failures.push(
+      "No bug tests found in src/__tests__/ or tests/ \u2014 start with Bug 1 (bug-01.test.ts or test_bug_01.py)"
+    );
   } else {
     console.log(`\u2139 Validating milestone Bug ${currentBug} of ${bugCount} (incremental gate-bot flow)`);
   }
@@ -260,8 +298,11 @@ function runValidate({ cwd, gates, env = process.env }) {
   }
 
   for (let i = 1; i <= currentBug; i++) {
-    if (!fs.existsSync(path.join(cwd, "src", "__tests__", `bug-0${i}.test.ts`))) {
-      failures.push(`src/__tests__/bug-0${i}.test.ts is missing`);
+    const hit = bugTestPath(cwd, i);
+    if (!hit) {
+      failures.push(
+        `Bug ${i} test is missing (expected src/__tests__/bug-0${i}.test.ts or tests/test_bug_0${i}.py)`
+      );
     }
   }
 
@@ -270,10 +311,9 @@ function runValidate({ cwd, gates, env = process.env }) {
     Object.keys(gates.discoveryRewrites ?? {}).map(Number).filter(Number.isInteger);
   for (const bugNum of discoveryBugs) {
     if (currentBug < bugNum) continue;
-    const testRel = `src/__tests__/bug-0${bugNum}.test.ts`;
-    const testPath = path.join(cwd, testRel);
-    if (!fs.existsSync(testPath)) continue;
-    const content = fs.readFileSync(testPath, "utf8");
+    const hit = bugTestPath(cwd, bugNum);
+    if (!hit) continue;
+    const content = fs.readFileSync(hit.abs, "utf8");
     const rewrite = gates.discoveryRewrites?.[String(bugNum)] ?? gates.discoveryRewrites?.[bugNum];
     if (rewrite && !discoveryRewritePasses(rewrite, content)) {
       failures.push(rewrite.failMessage);
@@ -373,7 +413,12 @@ function defaultRunTest({ cwd, testFile, targetModule, implFile }) {
   const backup = fs.existsSync(targetAbs) ? fs.readFileSync(targetAbs) : null;
   try {
     fs.copyFileSync(implFile, targetAbs);
-    execSync(`npx vitest run ${JSON.stringify(testFile)}`, { cwd, stdio: "ignore" });
+    const isPython = testFile.endsWith(".py") || detectArtifactKind(cwd) === "python_test";
+    if (isPython) {
+      execSync(`pytest ${JSON.stringify(testFile)}`, { cwd, stdio: "ignore" });
+    } else {
+      execSync(`npx vitest run ${JSON.stringify(testFile)}`, { cwd, stdio: "ignore" });
+    }
     return { passed: true };
   } catch {
     return { passed: false };
@@ -454,6 +499,89 @@ function runBehaviouralGate({ cwd, gate, referenceRoot, runTest = defaultRunTest
   }
 
   return { ok: failures.length === 0, results, failures };
+}
+
+/**
+ * Cross-bug orthogonality check (PLAT-2026-07-21-008).
+ *
+ * For each ordered pair (i, j) where i≠j, runs bug-i's canonical fixed impl against
+ * bug-j's candidate test via the injected runTest. If bug-j's test PASSES → the two
+ * bugs share a behavioural arm → collision → RED.
+ *
+ * Fail-closed: if runTest throws for any pair, that pair is treated as a collision.
+ *
+ * @param {object} a
+ * @param {Array<{bugId:string, fixedImplPath:string, candidateTestPath:string, targetModule:string, cwd:string}>} a.pairs
+ *   Each entry: one behaviourally-gated bug. fixedImplPath = absolute path to reference fixed impl.
+ *   candidateTestPath = relative path (from cwd) to the candidate test file.
+ *   targetModule = relative path (from cwd) to the module the test imports.
+ *   cwd = absolute path to the test-execution working directory.
+ * @param {Function} [a.runTest]  injected runner (same signature as runBehaviouralGate's runTest)
+ * @returns {{ ok:boolean, collisions:Array<{bugI:string,bugJ:string,reason:string}>, failures:string[] }}
+ */
+function runOrthogonalityGate({ pairs, runTest = defaultRunTest }) {
+  const collisions = [];
+  const failures = [];
+
+  if (!Array.isArray(pairs)) {
+    return {
+      ok: false,
+      collisions,
+      failures: ["runOrthogonalityGate needs a pairs array"],
+    };
+  }
+  if (pairs.length === 0) {
+    return { ok: true, collisions: [], failures: [] };
+  }
+
+  for (let i = 0; i < pairs.length; i++) {
+    for (let j = 0; j < pairs.length; j++) {
+      if (i === j) continue;
+      const a = pairs[i];
+      const b = pairs[j];
+      if (
+        !a?.bugId ||
+        !b?.bugId ||
+        !a.fixedImplPath ||
+        !b.candidateTestPath ||
+        !b.targetModule ||
+        !b.cwd
+      ) {
+        failures.push(
+          `orthogonality pair (${a?.bugId ?? "?"} × ${b?.bugId ?? "?"}) is missing required fields`
+        );
+        continue;
+      }
+      try {
+        const { passed } = runTest({
+          cwd: b.cwd,
+          testFile: b.candidateTestPath,
+          targetModule: b.targetModule,
+          implFile: a.fixedImplPath,
+        });
+        if (passed) {
+          collisions.push({
+            bugI: a.bugId,
+            bugJ: b.bugId,
+            reason: `bug-${a.bugId} fixed impl makes bug-${b.bugId} candidate test pass — shared behavioural arm`,
+          });
+        }
+      } catch (err) {
+        const message = err && err.message ? err.message : String(err);
+        collisions.push({
+          bugI: a.bugId,
+          bugJ: b.bugId,
+          reason: `runTest threw: ${message}`,
+        });
+      }
+    }
+  }
+
+  return {
+    ok: collisions.length === 0 && failures.length === 0,
+    collisions,
+    failures,
+  };
 }
 
 // ---- Loom defense gate (remediation-plan Principles 5 + 6) ----
@@ -605,14 +733,15 @@ function runDefenseGate({ defense, challenge, submission }) {
   if (!submission || typeof submission !== "object") {
     return {
       ok: false,
-      failures: ["no defense submission \u2014 a Loom recording is required (fail closed)"],
+      failures: ["no defense submission \u2014 a Stream recording is required (fail closed)"],
       checks,
     };
   }
 
   // 1. Recording URL present + well-formed https + allowed host
   const url = submission.recordingUrl;
-  const urlPattern = defense.recordingUrlPattern ?? "loom\\.com/(share|embed)/";
+  // Default: SSOT in defense-provider.cjs (PLAT-2026-07-21-010). Loom retired.
+  const urlPattern = defense.recordingUrlPattern ?? ACTIVE_RECORDING_URL_PATTERN;
   if (!url || typeof url !== "string" || url.trim().length === 0) {
     checks.recordingUrl = false;
     failures.push("defense recording URL is missing");
@@ -1244,8 +1373,11 @@ module.exports = {
   runValidate,
   discoveryRewritePasses,
   highestUnlockedBug,
+  bugTestPath,
+  detectArtifactKind,
   discoverReferenceImpls,
   runBehaviouralGate,
+  runOrthogonalityGate,
   defaultRunTest,
   validateDefenseConfig,
   pickDefenseChallenge,
@@ -1264,4 +1396,5 @@ module.exports = {
   scoreDefense,
   selectForAudit,
   buildProofTrackReport,
+  ACTIVE_RECORDING_URL_PATTERN,
 };
