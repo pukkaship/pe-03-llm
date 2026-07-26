@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass, field
-from typing import List, Optional, Protocol
+from typing import Any, List, Optional, Protocol
 
 
 # ── Domain types ────────────────────────────────────────────────────────
@@ -30,7 +30,7 @@ class InvoiceRecord:
     amount: Optional[float]
     currency: Optional[str]
     tax_rate: Optional[float]
-    line_items: Optional[list]
+    line_items: Optional[list[str]]
     bank_details: Optional[str]
     status: str = "processed"
 
@@ -106,7 +106,7 @@ def _classify_failure(error_type: str) -> str:
 _REQUIRED_FIELDS = ["vendor_name", "invoice_number", "amount"]
 
 
-def _is_usable(parsed: dict) -> Optional[str]:
+def _is_usable(parsed: dict[str, Any]) -> Optional[str]:
     """Return an error string if parsed is not usable for writing; None otherwise.
 
     Bug 3 (discovery): only checks that required keys are present in the dict —
@@ -187,7 +187,7 @@ def extract_invoice(
 
         # ── Parse ─────────────────────────────────────────────────────────
         try:
-            parsed: dict = json.loads(body)
+            parsed: dict[str, Any] = json.loads(body)
         except Exception:
             # Bug 1: swallows the parse error and writes a null-filled row.
             # Fix: dead-letter the document here instead of writing a record.

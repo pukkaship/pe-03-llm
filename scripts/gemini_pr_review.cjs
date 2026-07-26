@@ -21,7 +21,7 @@ if (!apiKey) {
 function highestUnlockedBug() {
   let n = 0;
   for (let i = 1; i <= 5; i++) {
-    if (fs.existsSync(`src/__tests__/bug-0${i}.test.ts`)) n = i;
+    if (fs.existsSync(`tests/test_bug_0${i}.py`)) n = i;
   }
   return n;
 }
@@ -53,7 +53,7 @@ function buildMilestoneContext(currentBug) {
     "## Milestone scope (read this first)",
     "",
     "Learners ship **one bug per PR**; the gate bot delivers the next test after each merge.",
-    `**This checkout's milestone: Bug ${currentBug} of 5** (inferred from highest bug-0N.test.ts present).`,
+    `**This checkout's milestone: Bug ${currentBug} of 5** (inferred from highest test_bug_0N.py present).`,
     "",
     `Apply the rubric **only to bugs 1 through ${currentBug}**. Do NOT penalize missing work on later bugs.`,
   ];
