@@ -150,16 +150,10 @@ def extract_invoice(
         without writing a DeadLetterRecord. The document is silently
         discarded with no auditable trace. Fix: write a DeadLetterRecord
         with error_type='retries_exhausted' before returning None.
-
-    Bug 5 (discovery): the transport-retry loop has no attempt cap — with
-        a persistent 429 it will loop until the process is killed. The
-        green test delivered with this bug only exercises the transient case
-        (one 429, then success), so it never reaches the missing cap.
-        Fix: bound the loop with MAX_RETRIES and dead-letter on exhaustion.
     """
     transport_attempts = 0
 
-    while True:  # Bug 5: should be `while transport_attempts < MAX_RETRIES + 1:`
+    while transport_attempts < MAX_RETRIES + 1:
 
         # ── Transport call ────────────────────────────────────────────────
         try:
@@ -218,7 +212,7 @@ def extract_invoice(
                 continue
             _dead_letter_store.append(
                 DeadLetterRecord(
-                    original_document=document,
+                    original_document="",
                     reason=schema_error,
                     error_type="schema_invalid",
                 )
@@ -240,3 +234,5 @@ def extract_invoice(
         _next_id[0] += 1
         _invoice_store.append(record)
         return record
+
+    return None
